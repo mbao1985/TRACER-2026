@@ -23,6 +23,7 @@ const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const commentsApiUrl = process.env.COMMENTS_API_URL || "";
+const dashboardBaseUrl = (process.env.DASHBOARD_URL || process.env.RENDER_EXTERNAL_URL || "http://127.0.0.1:10000").replace(/\/+$/, "");
 const resendApiKey = process.env.RESEND_API_KEY || "";
 const emailFrom = process.env.EMAIL_FROM || "";
 const validActionStatuses = new Set(["Open", "In progress", "Completed"]);
@@ -30,7 +31,7 @@ const openaiApiKey = process.env.OPENAI_API_KEY || "";
 const openaiModel = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const stockoutModelPath = path.join(rootDir, "public", "data", "predictions", "stockout-model.json");
 const githubToken = process.env.GITHUB_TOKEN || "";
-const githubRepository = process.env.GITHUB_REPOSITORY || "PharmZanga/tracer";
+const githubRepository = process.env.GITHUB_REPOSITORY || "mbao1985/TRACER-2026";
 const githubBranch = process.env.GITHUB_BRANCH || "main";
 const upload = multer({ storage: multer.memoryStorage(), limits: { files: 12, fileSize: 25 * 1024 * 1024 } });
 const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
@@ -361,7 +362,7 @@ async function sendApprovedAccessEmail(email, name = "") {
      ON CONFLICT (email) DO UPDATE SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, used_at = NULL, created_at = NOW()`,
     [emailAddress, tokenHash],
   );
-  const accessUrl = `https://tracer-secure-dashboard.onrender.com/auth/access?email=${encodeURIComponent(emailAddress)}&token=${accessToken}`;
+  const accessUrl = `${dashboardBaseUrl}/auth/access?email=${encodeURIComponent(emailAddress)}&token=${accessToken}`;
   return sendEmail({
     to: [email],
     subject: "Your National Tracer Dashboard secure sign-in link",
@@ -409,8 +410,8 @@ app.post("/request-access", async (request, response, next) => {
     void sendEmail({
       to: notificationEmails,
       subject: "New National Tracer Dashboard access request",
-      text: `${name} (${email}) from ${province || "an unspecified organisation"} has requested dashboard access. Review the request at https://tracer-secure-dashboard.onrender.com/admin`,
-      html: `<p><strong>${escapeHtml(name)}</strong> (${escapeHtml(email)}) from ${escapeHtml(province || "an unspecified organisation")} has requested National Tracer Dashboard access.</p><p><a href="https://tracer-secure-dashboard.onrender.com/admin">Review access request</a></p>`,
+      text: `${name} (${email}) from ${province || "an unspecified organisation"} has requested dashboard access. Review the request at ${dashboardBaseUrl}/admin`,
+      html: `<p><strong>${escapeHtml(name)}</strong> (${escapeHtml(email)}) from ${escapeHtml(province || "an unspecified organisation")} has requested National Tracer Dashboard access.</p><p><a href="${escapeHtml(dashboardBaseUrl)}/admin">Review access request</a></p>`,
     });
     response.redirect("/request-access?message=Request submitted for administrator approval.");
   } catch (error) { next(error); }

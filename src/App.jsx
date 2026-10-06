@@ -87,7 +87,7 @@ const stockStreamLabels = {
 
 const actionApiUrl = window.__TRACER_SECURE_DASHBOARD__
   ? window.location.origin
-  : import.meta.env.VITE_ACTION_API_URL || "https://tracer-comments-api.onrender.com";
+  : import.meta.env.VITE_ACTION_API_URL || window.location.origin;
 const copilotApiUrl = window.__TRACER_SECURE_DASHBOARD__ ? window.location.origin : "";
 
 const copilotSuggestions = [

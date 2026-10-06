@@ -8,12 +8,11 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const resendApiKey = process.env.RESEND_API_KEY || "";
 const emailFrom = process.env.EMAIL_FROM || "";
 const validStatuses = new Set(["Open", "In progress", "Completed"]);
+const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean));
 
 function isAllowedOrigin(origin) {
   return !origin
-    || origin === "https://pharmzanga.github.io"
-    || origin === "https://tracer-dashboard.onrender.com"
-    || origin === "https://tracer-secure-dashboard.onrender.com"
+    || allowedOrigins.has(origin)
     || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 

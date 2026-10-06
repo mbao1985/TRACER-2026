@@ -1,0 +1,88 @@
+# Independent hosting for mbao1985/TRACER-2026.
+services:
+  - type: web
+    name: mbao-tracer-2026-access
+    runtime: static
+    buildCommand: node tools/build-mbao-access-redirect.mjs
+    staticPublishPath: public-access-mbao
+    autoDeployTrigger: off
+    envVars:
+      - key: DASHBOARD_URL
+        fromService:
+          name: mbao-tracer-2026-dashboard
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+  - type: web
+    name: mbao-tracer-2026-comments
+    runtime: node
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: off
+    buildCommand: npm install
+    startCommand: node server/comments-server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mbao-tracer-2026-db
+          property: connectionString
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+  - type: web
+    name: mbao-tracer-2026-dashboard
+    runtime: node
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: off
+    buildCommand: npm install && npm run build
+    startCommand: node server/secure-dashboard.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mbao-tracer-2026-db
+          property: connectionString
+      - key: COMMENTS_API_URL
+        fromService:
+          name: mbao-tracer-2026-comments
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_NOTIFICATION_EMAILS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: OPENAI_API_KEY
+        value: ""
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: GITHUB_TOKEN
+        value: ""
+      - key: GITHUB_REPOSITORY
+        value: mbao1985/TRACER-2026
+      - key: GITHUB_BRANCH
+        value: main
+
+databases:
+  - name: mbao-tracer-2026-db
+    plan: free
+    region: frankfurt
+    databaseName: tracer_comments
+    user: tracer_comments
