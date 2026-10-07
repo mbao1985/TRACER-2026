@@ -2,11 +2,11 @@ import { analyseTracerCommodity } from "./facilityTracerAnalysis.js";
 
 const number = (value) => typeof value === "number" && Number.isFinite(value);
 export const STOCK_GROUPS = [
-  { key: "stockout", label: "Stockout", color: "#d71920" },
-  { key: "low", label: "Low stock", color: "#db980b" },
-  { key: "adequate", label: "According to plan", color: "#078b79" },
-  { key: "excess", label: "Above plan", color: "#287fc0" },
-  { key: "gap", label: "Data gap", color: "#87928e" },
+  { key: "stockout", label: "Stockout", color: "var(--status-red)" },
+  { key: "low", label: "Low stock", color: "var(--status-amber)" },
+  { key: "adequate", label: "According to plan", color: "var(--status-green)" },
+  { key: "excess", label: "Above plan", color: "var(--status-blue)" },
+  { key: "gap", label: "Data gap", color: "var(--status-gray)" },
 ];
 
 export function summaryStockMix(summary) {

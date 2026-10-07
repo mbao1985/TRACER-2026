@@ -2,6 +2,8 @@
 
 ## Visual changes
 
+Deeper colour revision: heatmap cells, risk badges, stock-mix segments and legacy status badges now share saturated green, ochre, crimson, blue and slate-grey fills with white text. Table headers use the theme's deep green/blue treatment. Chart bars and muted labels have stronger contrast. Heatmap thresholds and all source calculations are unchanged; the palette is consistent across the three themes.
+
 ### Refined medicine artwork
 
 The borrowed cover was edited using the built-in image-generation tool and saved as `public/images/dashboard-medicines-refined.png`. The original remains unchanged. The executive and ZAMMSA covers now use the refined image.
@@ -37,7 +39,7 @@ Keep the separate `render-mbao.yaml` Blueprint when deploying. Continue to use G
 
 ### Approved analytical workspace
 
-The executive overview now has four headline indicators, a two-column six-panel chart grid, a medicine/province heatmap, a priority-medicine workspace and follow-up links. The original facility-level chart remains available in the other modules. Province overview bars show the five strongest available results; stock-status bars show the five lowest-availability provinces, and completeness bars show the five lowest DHO reporting rates. Drill-through links reach the complete workspaces. Province bars also filter the overview.
+Dashboard Summary View now has four headline indicators, a two-column six-panel chart grid, a medicine/province heatmap and follow-up links. Priority Medicines is a separate view under Tracer Intelligence, accessible from the summary follow-up strip. The original facility-level chart remains available in the other modules. Province overview bars show the five strongest available results; stock status and reporting completeness include all selected provinces in keyboard-accessible scrollable lists, with the lowest availability and DHO reporting rates first respectively. Drill-through links reach the complete workspaces. Province bars also filter the summary. The existing `executive` URL remains valid.
 
 Availability and MOS use separate scales. No illustrative mockup figures, invented targets or invented chart observations were carried into the working dashboard. Trend lines use up to the last 12 loaded reporting periods within the selected range, stopping at the selected snapshot. Missing observations are not connected across the gap.
 

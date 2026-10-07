@@ -38,11 +38,11 @@ function Trend({ rows }) {
 }
 
 function StockMix({ rows }) {
-  return <div className="stock-mix">{rows.map((row) => <div className="mix-row" key={row.name}><span>{provinceName(row.name)}</span><div>{summaryStockMix(row).map((group) => <i key={group.key} style={{ width: `${(group.rate || 0) * 100}%`, background: group.color }} title={`${group.label}: ${pct(group.rate)} (${num(group.count)} submitted rows)`}>{group.rate >= .13 ? `${Math.round(group.rate * 100)}%` : ""}</i>)}</div></div>)}<div className="chart-legend">{STOCK_GROUPS.map((group) => <span key={group.key}><i style={{ background: group.color }} />{group.label}</span>)}</div><small className="chart-note">Share of submitted commodity rows; not a count of facilities.</small></div>;
+  return <div className="stock-mix"><div className="mix-scroll" tabIndex={0} role="region" aria-label="Stock status for all selected provinces">{rows.map((row) => <div className="mix-row" key={row.name}><span>{provinceName(row.name)}</span><div>{summaryStockMix(row).map((group) => <i key={group.key} style={{ width: `${(group.rate || 0) * 100}%`, background: group.color }} title={`${group.label}: ${pct(group.rate)} (${num(group.count)} submitted rows)`}>{group.rate >= .13 ? `${Math.round(group.rate * 100)}%` : ""}</i>)}</div></div>)}</div><div className="chart-legend">{STOCK_GROUPS.map((group) => <span key={group.key}><i style={{ background: group.color }} />{group.label}</span>)}</div><small className="chart-note">{rows.length} provinces · Share of submitted commodity rows; not a count of facilities.</small></div>;
 }
 
 function Reporting({ rows }) {
-  return <div className="reporting-bars">{rows.map((row) => <div key={row.name}><span>{provinceName(row.name)}</span><i><b style={{ width: `${row.expected ? row.reported / row.expected * 100 : 0}%` }} /></i><strong>{row.reported}/{row.expected}</strong></div>)}<small className="chart-note">Complete / expected DHO district reports · HC + HP rule</small></div>;
+  return <div className="reporting-bars"><section className="reporting-scroll" tabIndex={0} role="region" aria-label="Reporting completeness for all selected provinces">{rows.map((row) => <div key={row.name}><span>{provinceName(row.name)}</span><i><b style={{ width: `${row.expected ? row.reported / row.expected * 100 : 0}%` }} /></i><strong>{row.reported}/{row.expected}</strong></div>)}</section><small className="chart-note">{rows.length} provinces · Complete / expected DHO district reports · HC + HP rule</small></div>;
 }
 
 function Heatmap({ medicines, provinces }) {
@@ -51,7 +51,7 @@ function Heatmap({ medicines, provinces }) {
     const rows = medicine.details.filter((row) => row.province === province.name && finite(row.quantity) && row.quantity >= 0);
     const rate = rows.length ? rows.filter((row) => row.quantity > 0).length / rows.length : null;
     return <td key={province.name} className={rate === null ? "heat-gap" : rate < .5 ? "heat-critical" : rate < .8 ? "heat-low" : "heat-good"} title={`${medicine.name} · ${provinceName(province.name)}: ${rows.length} valid submitted observations`}>{pct(rate)}</td>;
-  })}</tr>)}</tbody></table><div className="chart-legend"><span>Availability: ≥80%</span><span>50–79.9%</span><span>&lt;50%</span><span>- No data</span></div></div>;
+  })}</tr>)}</tbody></table><div className="chart-legend"><span><i className="heat-good" />Availability: ≥80%</span><span><i className="heat-low" />50–79.9%</span><span><i className="heat-critical" />&lt;50%</span><span><i className="heat-gap" />- No data</span></div></div>;
 }
 
 const columns = [
@@ -109,6 +109,11 @@ function MedicineTable({ medicines, reportDate }) {
   </section>;
 }
 
+export function PriorityMedicinesWorkspace({ detailRows, previousRows, reportDate, heldCount, onNavigate }) {
+  const medicines = useMemo(() => medicineSummaries(detailRows, previousRows), [detailRows, previousRows]);
+  return <section className="priority-medicine-page"><div className="cleared-records"><span>{detailRows.length.toLocaleString()} data-quality-cleared observations · {heldCount.toLocaleString()} held records excluded</span><button type="button" onClick={() => onNavigate("gate")}>Review data-quality gate <ChevronRight size={13} /></button></div><MedicineTable medicines={medicines} reportDate={reportDate} /></section>;
+}
+
 export default function ExecutiveWorkspace({ trend, provinces, levels, kpis, detailRows, previousRows, reportingRows, reportingUnitCount, heldCount, reportDate, averaged, onProvince, onNavigate }) {
   const medicines = useMemo(() => medicineSummaries(detailRows, previousRows), [detailRows, previousRows]);
   const reporting = useMemo(() => {
@@ -128,12 +133,11 @@ export default function ExecutiveWorkspace({ trend, provinces, levels, kpis, det
       <Panel title="Province performance" basis={basis}><RankedBars rows={provinces.slice(0, 5)} reference={kpis.availability} onSelect={(row) => onProvince(row.name)} /><button className="chart-drill" type="button" onClick={() => onNavigate("provincial")}>View all provinces <ChevronRight size={13} /></button></Panel>
       <Panel title="Facility-level availability" basis={basis}><RankedBars rows={levels} /></Panel>
       <Panel title="Facility-level months of stock" basis={basis}><RankedBars rows={levels} metric="mos" reference={2} /></Panel>
-      <Panel title="Stock-status distribution" basis={`${basis} · lowest availability`}><StockMix rows={[...provinces].sort((a, b) => a.availability - b.availability).slice(0, 5)} /><button className="chart-drill" type="button" onClick={() => onNavigate("national")}>View national stock status <ChevronRight size={13} /></button></Panel>
-      <Panel title="Reporting completeness" basis="Latest report · lowest coverage"><Reporting rows={[...reporting].sort((a, b) => a.reported / a.expected - b.reported / b.expected).slice(0, 5)} /><button className="chart-drill" type="button" onClick={() => onNavigate("reporting")}>View all reporting districts <ChevronRight size={13} /></button></Panel>
+      <Panel title="Stock-status distribution" basis={`${basis} · all provinces`}><StockMix rows={[...provinces].sort((a, b) => a.availability - b.availability)} /><button className="chart-drill" type="button" onClick={() => onNavigate("national")}>View national stock status <ChevronRight size={13} /></button></Panel>
+      <Panel title="Reporting completeness" basis="Latest report · all provinces"><Reporting rows={[...reporting].sort((a, b) => (a.expected ? a.reported / a.expected : 0) - (b.expected ? b.reported / b.expected : 0))} /><button className="chart-drill" type="button" onClick={() => onNavigate("reporting")}>View all reporting districts <ChevronRight size={13} /></button></Panel>
     </div>
     <Panel title="Medicine availability by province" basis="Latest report"><Heatmap medicines={medicines} provinces={provinces} /></Panel>
     <div className="cleared-records"><span>Medicine details use {detailRows.length.toLocaleString()} data-quality-cleared observations; {heldCount.toLocaleString()} held records are excluded.</span><button type="button" onClick={() => onNavigate("gate")}>Review data-quality gate <ChevronRight size={13} /></button></div>
-    <MedicineTable medicines={medicines} reportDate={reportDate} />
-    <div className="priority-followup"><strong>Priority follow-up</strong><button type="button" onClick={() => onNavigate("facilities")}>Facility stockouts</button><button type="button" onClick={() => onNavigate("quality")}>Missing submissions</button><button type="button" onClick={() => onNavigate("actions")}>Redistribution follow-up</button></div>
+    <div className="priority-followup"><strong>Priority follow-up</strong><button type="button" onClick={() => onNavigate("priority")}>Priority medicines</button><button type="button" onClick={() => onNavigate("facilities")}>Facility stockouts</button><button type="button" onClick={() => onNavigate("quality")}>Missing submissions</button><button type="button" onClick={() => onNavigate("actions")}>Redistribution follow-up</button></div>
   </section>;
 }

@@ -14,11 +14,12 @@ import { buildVaccineReportingUnits, cleanVaccineReportingRows } from "./vaccine
 import { reportCatalogue } from "./reportCatalogue.js";
 import { reportOptions, selectReportPeriods, matchingStockPeriods } from "./reportPeriods.js";
 import { averageCollection, averagePeriods, averageRecords, matchingPeriods } from "./periodAverage.js";
-import ExecutiveWorkspace from "./ExecutiveWorkspace.jsx";
+import ExecutiveWorkspace, { PriorityMedicinesWorkspace } from "./ExecutiveWorkspace.jsx";
 import ThemeControl from "./ThemeControl.jsx";
 
 const dashboardPages = [
-  { id: "executive", short: "EX", label: "Executive Summary", icon: LayoutDashboard },
+  { id: "executive", short: "EX", label: "Dashboard Summary View", icon: LayoutDashboard },
+  { id: "priority", short: "PM", label: "Priority Medicines", icon: PackageSearch },
   { id: "reports", short: "RP", label: "Generate Report", icon: FileText },
   { id: "national", short: "NS", label: "National Stock Status", icon: Activity },
   { id: "stock", short: "ZS", label: "ZAMMSA Control Tower", icon: Warehouse },
@@ -39,7 +40,7 @@ const dashboardPages = [
 
 const sidebarGroups = [
   { id: "overview", label: "Overview", pages: ["executive"] },
-  { id: "tracer", label: "Tracer Intelligence", pages: ["national", "provincial", "facilities", "commodities", "alerts", "reporting", "quality", "gate", "predictive", "actions"] },
+  { id: "tracer", label: "Tracer Intelligence", pages: ["national", "provincial", "priority", "facilities", "commodities", "alerts", "reporting", "quality", "gate", "predictive", "actions"] },
   { id: "programmes", label: "Programme Intelligence", programmeViews: true, vaccineViews: true },
   { id: "zammsa", label: "ZAMMSA Intelligence", stockViews: true },
   { id: "administration", label: "Administration", pages: ["reports", "imports"] },
@@ -58,6 +59,7 @@ function programmeMatchesView(programme, view) {
 }
 
 const moduleDescriptions = {
+  priority: "Prioritised medicine observations and reporting-unit stock details.",
   executive: "National decision summary for the selected reporting period.",
   reports: "Generate a national weekly tracer report for any available reporting date.",
   national: "National availability, stock status, and tracer commodity pressure.",
@@ -4267,6 +4269,13 @@ function App() {
           reportDate={snapshotData.reportDate} averaged={Boolean(fieldData.isPeriodAverage)}
           onProvince={changeProvinceFilter} onNavigate={setActivePage}
         />}
+
+        {activePage === "priority" && <PriorityMedicinesWorkspace detailRows={dataQualityGate.passedRows}
+          previousRows={(() => {
+            const previous = tracerReportingPeriods.filter((period) => period.reportDate < snapshotData.reportDate).at(-1);
+            return previous ? safeCommodityRowsFromPeriod(previous).filter((row) => (selectedProvince === "all" || row.province === selectedProvince) && (selectedDistrict === "all" || row.district === selectedDistrict) && matchesFacilityCareLevel(row.facilityLevel, selectedFacilityLevel) && (selectedFacility === "all" || `${row.province}|${row.district}|${row.facilityLevel}|${row.facility}` === selectedFacility)) : [];
+          })()}
+          reportDate={snapshotData.reportDate} heldCount={dataQualityGate.blockedRows.length} onNavigate={setActivePage} />}
 
         <section className="management-kpi-summary">
           <div className="management-kpi-head">
