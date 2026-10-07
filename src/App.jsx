@@ -13,6 +13,9 @@ import { vaccineStockData } from "./vaccineStockData.js";
 import { buildVaccineReportingUnits, cleanVaccineReportingRows } from "./vaccineReportingUnits.js";
 import { reportCatalogue } from "./reportCatalogue.js";
 import { reportOptions, selectReportPeriods, matchingStockPeriods } from "./reportPeriods.js";
+import { averageCollection, averagePeriods, averageRecords, matchingPeriods } from "./periodAverage.js";
+import ExecutiveWorkspace from "./ExecutiveWorkspace.jsx";
+import ThemeControl from "./ThemeControl.jsx";
 
 const dashboardPages = [
   { id: "executive", short: "EX", label: "Executive Summary", icon: LayoutDashboard },
@@ -1842,6 +1845,12 @@ function App() {
   const [vaccineNavOpen, setVaccineNavOpen] = useState(false);
   const [stockWorkspace, setStockWorkspace] = useState("control");
   const [fieldPeriodId, setFieldPeriodId] = useState(() => tracerReportingPeriods.some((period) => period.id === initialDashboardParam("period")) ? initialDashboardParam("period") : tracerReportingPeriods.at(-1).id);
+  const [dateScope, setDateScope] = useState(() => {
+    const year = initialDashboardParam("allYear");
+    const month = initialDashboardParam("allMonth");
+    return (year === "all" || availableTracerYears.includes(year)) && (month === "all" || /^\d{4}-\d{2}$/.test(month))
+      ? { year, month, week: "all" } : null;
+  });
   const [nationalReportPeriodId, setNationalReportPeriodId] = useState(() => initialDashboardParam("reportPeriod") || initialDashboardParam("period") || tracerReportingPeriods.at(-1).id);
   const [nationalReportType, setNationalReportType] = useState(() => ["weekly","monthly","quarterly"].includes(initialDashboardParam("reportType")) ? initialDashboardParam("reportType") : "weekly");
   const [nationalReportYear, setNationalReportYear] = useState(() => availableTracerYears.includes(initialDashboardParam("reportYear")) ? initialDashboardParam("reportYear") : "2026");
@@ -1974,6 +1983,10 @@ function App() {
     const params = new URLSearchParams();
     params.set("page", activePage);
     params.set("period", fieldPeriodId);
+    if (dateScope?.week === "all") {
+      params.set("allYear", dateScope.year);
+      params.set("allMonth", dateScope.month);
+    }
     if (activePage === "reports") {
       params.set("reportType", nationalReportType);
       params.set("reportYear", nationalReportYear);
@@ -1990,7 +2003,7 @@ function App() {
     if (commodityTableLevel !== "all") params.set("tableLevel", commodityTableLevel);
     const nextUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [activePage, fieldPeriodId, selectedProvince, selectedDistrict, selectedFacilityLevel, selectedFacility, selectedCommodity, commodityStatusFilter, commodityTableProvince, commodityTableDistrict, commodityTableLevel, nationalReportType, nationalReportYear, nationalReportPeriodId]);
+  }, [activePage, fieldPeriodId, dateScope, selectedProvince, selectedDistrict, selectedFacilityLevel, selectedFacility, selectedCommodity, commodityStatusFilter, commodityTableProvince, commodityTableDistrict, commodityTableLevel, nationalReportType, nationalReportYear, nationalReportPeriodId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2071,7 +2084,12 @@ function App() {
     }
   }
 
-  const fieldData = tracerReportingPeriods.find((period) => period.id === fieldPeriodId) || tracerReportingPeriods.at(-1);
+  const snapshotData = tracerReportingPeriods.find((period) => period.id === fieldPeriodId) || tracerReportingPeriods.at(-1);
+  const averageData = useMemo(() => dateScope?.week === "all"
+    ? averagePeriods(matchingPeriods(tracerReportingPeriods, dateScope.year, dateScope.month)) : null,
+  [dateScope, historicalDataVersion]);
+  const averageSummaryPages = ["executive", "national", "provincial", "programmes"];
+  const fieldData = averageData && averageSummaryPages.includes(activePage) ? averageData : snapshotData;
   const activeDashboardPage = dashboardPages.find((page) => page.id === activePage);
   const activePageLabel = activePage === "stock"
     ? ({
@@ -2085,12 +2103,14 @@ function App() {
     : activeDashboardPage?.label || "Tracer Dashboard";
   const ActivePageIcon = activeDashboardPage?.icon || Database;
   const fieldYears = [...availableTracerYears].sort((a, b) => b.localeCompare(a));
-  const selectedMonth = fieldData.month;
-  const selectedYear = selectedMonth.slice(0, 4);
-  const fieldMonths = selectedYear === "2026"
+  const selectedMonth = dateScope?.month || snapshotData.month;
+  const selectedYear = dateScope?.year || snapshotData.month.slice(0, 4);
+  const fieldMonths = selectedYear === "all"
+    ? [...new Set([...availableTracerMonths, ...tracerReportingPeriods.map((period) => period.month)])].sort()
+    : selectedYear === "2026"
     ? availableTracerMonths
     : [...new Set(tracerReportingPeriods.filter((period) => period.month.startsWith(`${selectedYear}-`)).map((period) => period.month))];
-  const weeksInMonth = tracerReportingPeriods.filter((period) => period.month === selectedMonth && period.month.startsWith(`${selectedYear}-`));
+  const weeksInMonth = matchingPeriods(tracerReportingPeriods, selectedYear, selectedMonth);
   const stockStreams = [...new Set(weeklyStockPeriods.map((period) => period.stream))].sort();
   const centralStock = latestZammsaCentralReport;
   const centralPriorityRows = (centralStock?.rows || [])
@@ -2262,15 +2282,26 @@ function App() {
     .filter((row) => selectedFacility === "all" || `${row.province}|${row.district}|${row.facilityLevel}|${row.facility}` === selectedFacility), [periodCommodityRows, selectedProvince, selectedDistrict, selectedFacilityLevel, selectedFacility]);
   const dataQualityGate = useMemo(() => buildDataQualityGate(filteredCommodityRows), [filteredCommodityRows]);
 
-  const fieldKpis = combineRollups(filteredFacilities, fieldData.national);
-  const fieldAverageMos = cappedAverageMos(filteredCommodityRows);
   const isNationalUnfilteredScope = selectedProvince === "all"
     && selectedDistrict === "all"
     && selectedFacilityLevel === "all"
     && selectedFacility === "all";
-  const scopedProvinceRows = aggregateRollups(filteredFacilities, "province")
+  const fieldKpis = fieldData.isPeriodAverage
+    ? (isNationalUnfilteredScope ? fieldData.national : averageRecords(matchingPeriods(tracerReportingPeriods, selectedYear, selectedMonth).map((period) => combineRollups(periodScopedFacilities(period), makeEmptyRollup("Current selection")))))
+    : combineRollups(filteredFacilities, fieldData.national);
+  const fieldAverageMos = fieldData.isPeriodAverage ? fieldKpis.mos : cappedAverageMos(filteredCommodityRows);
+  function periodScopedFacilities(period) {
+    return (period.facilities || []).filter((row) => (selectedProvince === "all" || row.province === selectedProvince)
+      && (selectedDistrict === "all" || row.district === selectedDistrict)
+      && matchesFacilityCareLevel(row.facilityLevel, selectedFacilityLevel)
+      && (selectedFacility === "all" || `${row.province}|${row.district}|${row.facilityLevel}|${row.name}` === selectedFacility));
+  }
+  function scopeAverageGroups(key) {
+    return averageCollection(matchingPeriods(tracerReportingPeriods, selectedYear, selectedMonth).map((period) => ({ [key]: aggregateRollups(periodScopedFacilities(period), key === "provinces" ? "province" : "district") })), key);
+  }
+  const scopedProvinceRows = (fieldData.isPeriodAverage ? (isNationalUnfilteredScope ? fieldData.provinces : scopeAverageGroups("provinces")) : aggregateRollups(filteredFacilities, "province"))
     .map((row) => {
-      const displayOverride = isNationalUnfilteredScope ? approvedProvincePerformanceOverrides[fieldData.id]?.[row.name] : null;
+      const displayOverride = isNationalUnfilteredScope && !fieldData.isPeriodAverage ? approvedProvincePerformanceOverrides[fieldData.id]?.[row.name] : null;
       return displayOverride ? {
         ...row,
         calculatedAvailability: row.availability,
@@ -2281,14 +2312,16 @@ function App() {
       } : row;
     })
     .sort((a, b) => b.availability - a.availability || b.rows - a.rows);
-  const scopedDistrictRows = aggregateRollups(filteredFacilities, "district")
+  const scopedDistrictRows = (fieldData.isPeriodAverage ? scopeAverageGroups("districts") : aggregateRollups(filteredFacilities, "district"))
     .sort((a, b) => b.riskRows - a.riskRows || a.availability - b.availability);
   const levelOfCareRows = careLevelBuckets.map((bucket) => {
     const facilities = filteredFacilities.filter((facility) => careLevelBucket(facility.facilityLevel) === bucket.id);
     const commodityRows = filteredCommodityRows.filter((row) => careLevelBucket(row.facilityLevel) === bucket.id);
-    const calculatedRollup = combineRollups(facilities, makeEmptyRollup(bucket.label));
-    const calculatedMos = cappedAverageMos(commodityRows);
-    const displayOverride = isNationalUnfilteredScope
+    const calculatedRollup = fieldData.isPeriodAverage
+      ? averageRecords(matchingPeriods(tracerReportingPeriods, selectedYear, selectedMonth).map((period) => combineRollups(periodScopedFacilities(period).filter((facility) => careLevelBucket(facility.facilityLevel) === bucket.id), makeEmptyRollup(bucket.label))))
+      : combineRollups(facilities, makeEmptyRollup(bucket.label));
+    const calculatedMos = fieldData.isPeriodAverage ? calculatedRollup.mos : cappedAverageMos(commodityRows);
+    const displayOverride = isNationalUnfilteredScope && !fieldData.isPeriodAverage
       ? approvedLevelOfCareDisplayOverrides[fieldData.id]?.[bucket.id]
       : null;
     return {
@@ -2754,11 +2787,11 @@ function App() {
   const facilityAvailabilityTargetRate = filteredFacilities.length ? facilityAvailabilityTargetCount / filteredFacilities.length : 0;
   const executiveIndicatorCards = [
     { label: "National availability", value: formatPercent(fieldKpis.availability), sub: "Facility tracer submissions", icon: PackageSearch, tone: "green" },
-    { label: "Average MOS", value: formatMos(fieldAverageMos), sub: "Submitted stock position (12-month cap)", icon: ChartNoAxesCombined, tone: "blue" },
-    { label: "Reporting units", value: filteredFacilities.length, sub: `${fieldData.counts.facilityUnits} in full report`, icon: ClipboardCheck, tone: "teal" },
-    { label: "Stockout facilities", value: stockoutFacilityCount, sub: "At least one stockout item", icon: Siren, tone: "red" },
-    { label: "Low-stock facilities", value: lowStockFacilityCount, sub: "Below 2 MOS", icon: BellRing, tone: "amber" },
-    { label: "DHO districts reporting", value: fieldDistrictsReportedInScope, sub: "Health Centre + Health Post required", icon: MapPinned, tone: "violet" },
+    { label: "Average MOS", value: formatMos(fieldAverageMos), sub: fieldData.isPeriodAverage ? "Mean of submitted report summaries" : "Submitted stock position (12-month cap)", icon: ChartNoAxesCombined, tone: "blue" },
+    { label: "Reporting units", value: filteredFacilities.length, sub: `${fieldData.counts.facilityUnits} in ${fieldData.isPeriodAverage ? "latest" : "full"} report`, icon: ClipboardCheck, tone: "teal" },
+    { label: "Stockout facilities", value: stockoutFacilityCount, sub: fieldData.isPeriodAverage ? "Latest report · at least one stockout" : "At least one stockout item", icon: Siren, tone: "red" },
+    { label: "Low-stock facilities", value: lowStockFacilityCount, sub: fieldData.isPeriodAverage ? "Latest report · below 2 MOS" : "Below 2 MOS", icon: BellRing, tone: "amber" },
+    { label: "DHO districts reporting", value: fieldDistrictsReportedInScope, sub: fieldData.isPeriodAverage ? "Latest report · HC + HP required" : "Health Centre + Health Post required", icon: MapPinned, tone: "violet" },
   ];
   const highRiskCommodityCount = new Set(commodityScopeRows
     .filter((row) => row.mos !== null && row.mos < 2)
@@ -3319,6 +3352,10 @@ function App() {
   }
 
   async function changeMonth(month) {
+    if (month === "all") {
+      await changeAverageScope(selectedYear, "all");
+      return;
+    }
     if (!tracerReportingPeriods.some((period) => period.month === month)) {
       setMonthLoading(month);
       try {
@@ -3334,10 +3371,15 @@ function App() {
     const latestInMonth = tracerReportingPeriods.filter((period) => period.month === month).at(-1);
     if (!latestInMonth) return;
     setFieldPeriodId(latestInMonth.id);
+    setDateScope({ year: selectedYear === "all" ? "all" : month.slice(0, 4), month, week: latestInMonth.id });
     resetFieldHierarchy();
   }
 
   async function changeYear(year) {
+    if (year === "all") {
+      await changeAverageScope("all", "all");
+      return;
+    }
     if (!tracerReportingPeriods.some((period) => period.month.startsWith(`${year}-`))) {
       setHistoricalYearLoading(year);
       try {
@@ -3355,8 +3397,33 @@ function App() {
       .at(-1);
     if (!latestInYear) return;
     setFieldPeriodId(latestInYear.id);
+    setDateScope({ year, month: latestInYear.month, week: latestInYear.id });
     resetFieldHierarchy();
   }
+
+  async function changeAverageScope(year, month, resetHierarchy = true) {
+    setHistoricalYearLoading(year);
+    setMonthLoading(month);
+    try {
+      if (month !== "all") await loadTracerMonth(month);
+      else for (const value of year === "all" ? availableTracerYears : [year]) await loadHistoricalTracerYear(value);
+      const periods = matchingPeriods(tracerReportingPeriods, year, month);
+      if (!periods.length) throw new Error("No reports in this range");
+      setHistoricalDataVersion((version) => version + 1);
+      setFieldPeriodId(periods.at(-1).id);
+      setDateScope({ year, month, week: "all" });
+      if (resetHierarchy) resetFieldHierarchy();
+    } catch {
+      window.alert("Could not load all reports in this range. Your previous selection has been kept. Please try again.");
+    } finally {
+      setHistoricalYearLoading("");
+      setMonthLoading("");
+    }
+  }
+
+  useEffect(() => {
+    if (dateScope?.week === "all") changeAverageScope(dateScope.year, dateScope.month, false);
+  }, []);
 
   function selectProvince(province) {
     setSelectedProvince(province);
@@ -4074,26 +4141,32 @@ function App() {
       </aside>
 
       <main className={`app-shell dashboard-page page-${activePage} stock-${stockWorkspace} vaccine-${vaccineWorkspaceView}`}>
+        <div className="workspace-appearance"><span>{activePageLabel}</span><ThemeControl /></div>
         {!['stock', 'comparison', 'reporting', 'vaccines', 'reports'].includes(activePage) && <header className="dashboard-topbar">
           <div className="global-filter-bar">
             <label>
               <span>Year</span>
               <select value={selectedYear} onChange={(event) => changeYear(event.target.value)} disabled={Boolean(historicalYearLoading)}>
+                <option value="all">All years</option>
                 {fieldYears.map((year) => <option value={year} key={year}>{historicalYearLoading === year ? `Loading ${year}...` : year}</option>)}
               </select>
             </label>
             <label>
               <span>Month</span>
-              <select value={selectedMonth} onChange={(event) => changeMonth(event.target.value)} disabled={Boolean(monthLoading)}>
+              <select value={selectedMonth} onChange={(event) => changeMonth(event.target.value)} disabled={Boolean(monthLoading || historicalYearLoading)}>
+                <option value="all">All months</option>
                 {fieldMonths.map((month) => <option value={month} key={month}>{monthLoading === month ? `Loading ${monthLabel(month)}...` : monthLabel(month)}</option>)}
               </select>
             </label>
             <label>
               <span>Week</span>
-              <select value={fieldPeriodId} onChange={(event) => {
+              <select value={dateScope?.week || fieldPeriodId} disabled={Boolean(monthLoading || historicalYearLoading)} onChange={(event) => {
+                if (event.target.value === "all") { changeAverageScope(selectedYear, selectedMonth); return; }
                 setFieldPeriodId(event.target.value);
+                setDateScope({ year: selectedYear, month: selectedMonth, week: event.target.value });
                 resetFieldHierarchy();
               }}>
+                <option value="all">All weeks</option>
                 {weeksInMonth.map((period) => <option value={period.id} key={period.id}>{period.week} - {period.reportDate}</option>)}
               </select>
             </label>
@@ -4137,6 +4210,12 @@ function App() {
           </div>
         </header>}
 
+        {averageData && <aside className="period-basis" role="status">
+          <CalendarDays size={18} aria-hidden="true" />
+          <div><strong>{averageData.averageReportCount} reports · {averageData.source}</strong>
+          <span>{averageSummaryPages.includes(activePage) ? "Period averages: executive, national, provincial and programme summaries. Detailed records and reporting completeness remain the latest snapshot." : `Latest snapshot: ${snapshotData.label}. Operational alerts, data quality and stock decisions use source records, not averaged stock.`}</span></div>
+        </aside>}
+
         <section className="module-context" aria-label={`${activePageLabel} module`}>
           <span className="module-context-icon"><ActivePageIcon size={21} strokeWidth={2.15} aria-hidden="true" /></span>
           <div><span>Control Tower module</span><strong>{activePageLabel}</strong><small>{moduleDescriptions[activePage] || "National tracer supply-chain intelligence."}</small></div>
@@ -4144,23 +4223,23 @@ function App() {
 
         <section className="hero">
           <div>
-            <p className="eyebrow">Weekly Tracer Submission</p>
-            <h1>Facility stock visibility from province submissions</h1>
-            <p className="lede">This dashboard uses only weekly tracer reports submitted by provinces. It highlights stockouts, low stock, reporting footprint, programme pressure, and commodity risk from facility level up to national level.</p>
+            <p className="eyebrow">NSCCU · National Overview</p>
+            <h1>National Medicines{" "}<br />Executive Intelligence</h1>
+            <p className="lede">Protect availability. Act before stock-out.</p>
           </div>
           <div className="report-card">
-            <span>Selected report</span>
-            <strong>{fieldData.reportDate}</strong>
-            <small>{fieldData.source}</small>
-            <small>{fieldData.counts.rows.toLocaleString()} commodity rows | {fieldData.counts.facilityUnits} reporting units</small>
-            <button className="hero-export" type="button" onClick={exportCsv}>Export facility CSV</button>
+            <span>{averageData ? "Period average" : "Current reporting period"}</span>
+            <strong>{averageData ? `${averageData.averageReportCount} reports` : fieldData.label}</strong>
+            <small>{averageData ? averageData.source : fieldData.reportDate}</small>
+            <small>{Math.round((averageData?.averageCounts || fieldData.counts).rows).toLocaleString()} {averageData ? "average" : "submitted"} rows · {Math.round((averageData?.averageCounts || fieldData.counts).facilityUnits)} {averageData ? "average reporting units" : "reporting units"}</small>
+            <button className="hero-export" type="button" onClick={exportCsv}>{averageData ? "Export latest facility CSV" : "Export facility CSV"}</button>
           </div>
         </section>
 
-        <section className="executive-brief">
+        {activePage !== "executive" && <section className="executive-brief">
           <div className="executive-statement">
             <p className="eyebrow dark">Leadership Brief</p>
-            <h2>National tracer availability is {formatPercent(fieldKpis.availability)}, with {fieldKpis.riskRows.toLocaleString()} submitted rows requiring attention.</h2>
+            <h2>{fieldData.isPeriodAverage ? "Average national tracer availability" : "National tracer availability"} is {formatPercent(fieldKpis.availability)}, with {Math.round(fieldKpis.riskRows).toLocaleString()} {fieldData.isPeriodAverage ? "average" : "submitted"} rows requiring attention.</h2>
             <p>{bestProvince?.name} has the strongest reported availability at {formatPercent(bestProvince?.availability)}, while {worstProvince?.name} is lowest at {formatPercent(worstProvince?.availability)}. In the current filter, {stockoutFacilityCount} reporting units have stockouts and {lowStockFacilityCount} have low-stock commodities.</p>
           </div>
           <div className="executive-kpis">
@@ -4169,7 +4248,25 @@ function App() {
               return <div className={`tone-${card.tone}`} key={card.label}><span className="executive-kpi-icon"><IndicatorIcon size={22} strokeWidth={2.2} aria-hidden="true" /></span><div><span>{card.label}</span><strong>{card.value}</strong><small>{card.sub}</small></div></div>;
             })}
           </div>
-        </section>
+        </section>}
+
+        {activePage === "executive" && <ExecutiveWorkspace
+          trend={matchingPeriods(tracerReportingPeriods, selectedYear, selectedMonth).filter((period) => period.reportDate <= snapshotData.reportDate).map((period) => {
+            const rows = periodScopedFacilities(period);
+            return { id: period.id, date: period.reportDate, availability: rows.length ? combineRollups(rows, period.national).availability : null };
+          })}
+          provinces={scopedProvinceRows} levels={levelOfCareRows}
+          kpis={{ ...fieldKpis, mos: fieldAverageMos }}
+          detailRows={dataQualityGate.passedRows}
+          previousRows={(() => {
+            const previous = tracerReportingPeriods.filter((period) => period.reportDate < snapshotData.reportDate).at(-1);
+            return previous ? safeCommodityRowsFromPeriod(previous).filter((row) => (selectedProvince === "all" || row.province === selectedProvince) && (selectedDistrict === "all" || row.district === selectedDistrict) && matchesFacilityCareLevel(row.facilityLevel, selectedFacilityLevel) && (selectedFacility === "all" || `${row.province}|${row.district}|${row.facilityLevel}|${row.facility}` === selectedFacility)) : [];
+          })()}
+          reportingRows={primaryCareDistrictRows(snapshotData).filter((row) => (selectedProvince === "all" || row.province === selectedProvince) && (selectedDistrict === "all" || row.name === selectedDistrict)).map((row) => ({ province: row.province, reported: row.submitted }))}
+          reportingUnitCount={filteredFacilities.length} heldCount={dataQualityGate.blockedRows.length}
+          reportDate={snapshotData.reportDate} averaged={Boolean(fieldData.isPeriodAverage)}
+          onProvince={changeProvinceFilter} onNavigate={setActivePage}
+        />}
 
         <section className="management-kpi-summary">
           <div className="management-kpi-head">
@@ -4191,7 +4288,7 @@ function App() {
           </div>
         </section>
 
-        <LevelOfCarePerformance rows={levelOfCareRows} />
+        {activePage !== "executive" && <LevelOfCarePerformance rows={levelOfCareRows} />}
 
         <section className="tracer-overview">
           <div className="tracer-lead">
